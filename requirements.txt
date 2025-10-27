@@ -1,0 +1,5 @@
+google-generativeai
+opencv-python
+numpy
+pillow
+tqdm
