@@ -1,5 +1,7 @@
-google-generativeai
 opencv-python
-numpy
-pillow
 tqdm
+torch
+transformers
+sentence-transformers
+numpy
+google-generativeai   # optional

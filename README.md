@@ -1,30 +1,57 @@
-# ImageReconstruction
-# 🎥 FrameReconstruct (Gemini-based Video Unjumbling)
+Hybrid Motion + Semantic Temporal Reconstructor
+==============================================
 
-This project reconstructs the correct order of shuffled video frames using **Google Gemini** via the Generative AI API.  
-The model understands visual continuity and reasoning to infer the most natural chronological order.
+Overview
+--------
+A practical hybrid pipeline that reconstructs jumbled single-shot videos by combining:
+- local optical-flow motion cues,
+- fast centroid detection (foreground),
+- optional CLIP semantic embeddings for tie-breaks,
+- optional Gemini reasoning for ambiguous chunks (rate-limited).
 
----
+This is designed to run on CPU (Iris Xe) and in VS Code.
 
-## ⚙️ Setup
+Files
+-----
+src/
+  hybrid_motion_reconstruct.py   # main script
+  motion_utils.py                # optical flow, centroids, smoothing
+  clip_embed.py                  # optional CLIP extractor
+  genai_refine.py                # optional Gemini chunk reordering (safe)
 
-### 1️⃣ Clone or extract project
-```bash
-cd FrameReconstruct
-pip install -r requirements.txt
-```
-Get an API key from Google AI Studio
-```
-set GEMINI_API_KEY=your_api_key_here     # Windows
-export GEMINI_API_KEY=your_api_key_here  # Mac/Linux
-```
-```
-python src/genai_reconstruct.py --input data/jumbled_video.mp4 --output outputs/reconstructed_gemini.mp4
-```
-Optional Flags
-```
---model gemini-2.0-pro        # or gemini-1.5-flash
---chunk 30                    # frames per batch
---parallel 3                  # number of Gemini calls in parallel
---fps 60
-```
+requirements.txt
+
+Usage
+-----
+1. Install dependencies:
+   pip install -r requirements.txt
+
+2. Put your jumbled video at:
+   data/jumbled_video.mp4
+
+3. Run (balanced):
+   python src/hybrid_motion_reconstruct.py --input data/jumbled_video.mp4 --output outputs/reconstructed.mp4
+
+4. Optional flags:
+   --use_clip     : enable CLIP (slower, helps in ambiguous cases)
+   --use_genai    : enable GenAI/Gemini chunk refinement (requires GEMINI_API_KEY env var)
+   --device cpu|cuda
+
+Gemini / API notes
+------------------
+- If you enable --use_genai, set environment variable GEMINI_API_KEY before running:
+  setx GEMINI_API_KEY "YOUR_KEY"   (Windows)
+  export GEMINI_API_KEY="YOUR_KEY" (Linux/Mac)
+
+- The script waits between GenAI calls (default 65s) to be safe on free-tier quotas.
+
+Tuning tips
+-----------
+- If output is reversed, simply reverse the order file: outputs/reconstructed.mp4.order.txt contains the frame order.
+- Try --use_clip if local results still vibrate.
+- Reduce CHUNK_SIZE or CHUNK_OVERLAP in the main script if extra speed is needed.
+
+Support
+-------
+If you run into errors (missing packages, CUDA issues, memory), paste the traceback and I will help fix them.
+
