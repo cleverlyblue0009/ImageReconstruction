@@ -1,76 +1,179 @@
-Hybrid Stable Reconstruction
-AI-Driven Video Frame Reordering & Motion Stabilization
-🚀 Overview
+Hybrid Stable Reconstruction v2
+A Hybrid AI + Optical Flow Framework for Jumbled Video Reordering and Motion Stabilization
+1️⃣ Introduction
 
-Hybrid Stable Reconstruction is a lightweight, CPU-safe algorithm that reconstructs a jumbled or unordered video into a temporally consistent, forward-moving sequence.
-By combining semantic scene understanding with optical-flow-based trajectory smoothing, it intelligently restores natural motion in real-world clips — such as a person walking smoothly along a path — even when the input frames are randomly shuffled.
+In real-world scenarios, videos may become temporally disordered due to data corruption, frame shuffling, or manual frame extraction errors.
+Recovering the correct chronological order from such jumbled frames is a challenging problem — particularly when done without any timestamps or metadata.
 
-This hybrid design delivers AI-level intelligence without GPU dependency, making it practical for laptops with integrated graphics (e.g., Intel Iris Xe).
+Hybrid Stable Reconstruction v2 aims to solve this challenge through a lightweight hybrid approach, combining semantic scene understanding (using pre-trained deep models) with classical optical flow analysis and trajectory smoothing.
+The goal is to reconstruct a smooth, forward-moving video that follows the subject’s natural motion (e.g., a person walking), with minimal jitter or backward tugs.
 
-🎯 Key Features
+2️⃣ Motivation & Thought Process
 
-✅ Hybrid AI Ordering – Fuses semantic similarity (SegFormer b0) with optical-flow cues for reliable temporal reasoning.
-✅ OFIR-Style Trajectory Smoothing – Applies Savitzky–Golay filtering to eliminate back-and-forth jumps.
-✅ Lightweight and Fast – Runs efficiently on CPU-only environments.
-✅ Automatic Fallback – Switches to DeepLabV3 when Hugging Face models are unavailable.
-✅ Stable Forward Motion – Produces a natural, directionally consistent output video with minimal jitter.
+The early versions of this project explored:
 
-⚙️ Working Principle
+Pure semantic ordering: Sorting frames by high-level scene similarity (SegFormer/DeepLab histograms).
+→ Result: Globally correct structure, but lacked motion direction.
 
-Frame Extraction – Reads all frames from the scrambled input video.
+Pure optical flow ordering: Using motion vectors between consecutive frames.
+→ Result: Preserved local motion, but drifted or oscillated due to noise.
 
-Semantic Fingerprinting – Each frame passes through a pre-trained SegFormer model to generate a compact 64-bin histogram representing its semantic layout.
+Through multiple iterations, the insight emerged that:
 
-Similarity Graph Formation – A pairwise similarity matrix encodes visual relatedness between frames.
+Semantic similarity captures what each frame contains, while optical flow encodes how the scene changes.
 
-Hybrid Ordering Algorithm – Greedily selects the next frame that maximizes semantic continuity while respecting motion consistency.
+Therefore, the final solution — Hybrid Stable Reconstruction v2 — integrates both:
 
-Trajectory Refinement – Optical-flow magnitudes are accumulated and smoothed to ensure monotonic forward progression.
+Semantic fingerprints guide global structure (so visually similar scenes stay near each other).
 
-Video Reconstruction – Frames are re-assembled in the refined order, yielding a coherent, forward-moving clip.
+Optical flow ensures local directionality (so motion flows forward).
 
-🧩 Installation
-pip install opencv-python torch torchvision tqdm transformers scipy
+A Savitzky–Golay filter smooths cumulative motion, eliminating local reversals.
 
-▶️ Usage
+This design achieves a balance between deep-learning perception and traditional motion physics, while remaining CPU-efficient.
 
-Single-line command:
+3️⃣ Technical Workflow
+Step 1: Frame Extraction
 
-python hybrid_stable_reconstruct_v2.py --input jumbled_video.mp4 --output reconstructed_stable.mp4 --fps 60
+The input video (possibly jumbled) is read frame by frame using OpenCV:
+
+cap = cv2.VideoCapture(input_path)
+frames = [f for f in video]
 
 
-Output files:
+Each frame is stored in memory for further processing.
 
-reconstructed_stable.mp4 – Final stabilized video
+Step 2: Semantic Fingerprinting (Hugging Face SegFormer)
 
-reconstructed_stable.order.txt – Recovered frame order indices
+Each frame is passed through the nvidia/segformer-b0-finetuned-ade-512-512 model via the Hugging Face Transformers library.
 
-📊 Example Outcome
+From the segmentation map:
 
-From a completely shuffled walking-sequence video,
-Hybrid Stable Reconstruction v2 recovers a visually smooth forward motion with suppressed jitter and no large reversals.
+A 64-bin histogram of semantic classes is computed.
 
-🧱 Technical Highlights
-Module	Function
-SegFormer (b0)	Extracts high-level semantic scene representations
-Optical Flow (Farneback)	Captures local pixel-wise motion direction
-Savitzky–Golay Filter	Smooths cumulative trajectory to enforce forward monotonicity
-Hybrid Greedy Ordering	Merges appearance and motion cues for temporal reconstruction
-💡 Design Philosophy
+This histogram becomes a semantic embedding vector for that frame.
 
-The project demonstrates that a smart combination of pre-trained semantic models and classic optical-flow analysis can reconstruct temporal order without any training data or GPU.
-This fusion of modern AI perception and traditional vision dynamics offers a practical path toward temporal understanding in video restoration.
+This represents the “layout” of each scene — sky, ground, person, road, etc. — in a compact, comparable form.
 
-⚠️ Limitations
+If the Hugging Face model fails, the script automatically falls back to TorchVision DeepLabV3 for robustness.
 
-Minor micro-jitters may persist in scenes with strong background motion.
+Step 3: Similarity Graph Construction
 
-Ambiguous, near-identical frames can occasionally swap locally.
+A similarity matrix is computed between all frame embeddings:
 
-Pose-based enhancement could further improve temporal precision (future work).
+𝑆
+(
+𝑖
+,
+𝑗
+)
+=
+dot
+(
+𝐸
+𝑖
+,
+𝐸
+𝑗
+)
+S(i,j)=dot(E
+i
+	​
 
-🧑‍💻 Authorship & Acknowledgement
+,E
+j
+	​
 
-Developed by: Upasana Bhaumik
-Project: Hybrid Stable Reconstruction v2 — Semantic + Optical Flow Video Reordering
-© 2025 Upasana Bhaumik — All rights reserved
+)
+
+Each value represents how similar two frames are semantically.
+A greedy traversal algorithm iteratively picks the next unvisited frame most similar to the current one, creating a coarse temporal ordering.
+
+Step 4: Optical Flow Trajectory Refinement
+
+For every consecutive frame pair in the coarse order, the Farneback optical flow is computed to estimate average pixel displacement:
+
+flow = cv2.calcOpticalFlowFarneback(prev, next, ...)
+
+
+These displacements are accumulated to build a motion trajectory.
+To smooth noise and eliminate oscillations, a Savitzky–Golay filter is applied:
+
+𝑇
+𝑠
+=
+savgol_filter
+(
+𝑇
+,
+window
+=
+11
+,
+poly
+=
+2
+)
+T
+s
+	​
+
+=savgol_filter(T,window=11,poly=2)
+
+The resulting trajectory provides a clean, monotonic “forward motion” curve.
+
+Step 5: Final Ordering and Output
+
+Frames are re-sorted based on the smoothed trajectory values and written into a new stabilized video:
+
+write_video([frames[i] for i in sorted_order], output_path, fps)
+
+
+Two outputs are saved:
+
+reconstructed_stable.mp4 → The final reconstructed video.
+
+reconstructed_stable.order.txt → The recovered frame index order.
+
+4️⃣ Design Choices and Justifications
+Design Choice	Reasoning
+SegFormer (b0)	Lightweight, fast, and pretrained on ADE20K for diverse semantic scenes.
+64-bin histogram embedding	Compact representation of high-level semantics without heavy computation.
+Optical Flow (Farneback)	Works well on CPU, robust for gradual motion like walking.
+Savitzky–Golay smoothing	Filters out noisy frame-to-frame flow variance and enforces continuous forward progress.
+Hybrid greedy order	Ensures semantic consistency and local motion continuity simultaneously.
+CPU-safe implementation	Allows smooth operation even on integrated GPUs (Iris Xe).
+5️⃣ Results and Observations
+
+When tested on jumbled walking videos:
+
+The algorithm successfully reorders frames into a forward-moving sequence.
+
+Backward jumps and jitter are substantially reduced compared to purely flow-based or semantic-only methods.
+
+Processing a 300-frame video takes ~1.5–2 minutes on CPU, depending on resolution.
+
+The output video demonstrates clear forward progression of the subject with smooth motion transitions.
+
+6️⃣ Limitations and Future Work
+
+🔸 Minor local oscillations can still occur if several frames are visually identical.
+🔸 Background motion (e.g., camera shake, trees) can occasionally distort flow.
+🔸 In future versions, integrating pose-based tracking (MediaPipe or OpenPifPaf) could further stabilize human-centered motion.
+🔸 Advanced embeddings like DINOv2 or CLIP could strengthen semantic discrimination for near-identical frames.
+
+7️⃣ Conclusion
+
+Hybrid Stable Reconstruction demonstrates that temporal reconstruction doesn’t require deep end-to-end learning —
+a smart combination of semantic AI models and optical flow physics can restore coherent forward motion effectively.
+
+This work shows how lightweight, interpretable hybrid AI can solve complex real-world video problems even on limited hardware.
+
+🧩 Command to Run:
+python hybrid_stable_reconstruct.py --input jumbled_video.mp4 --output reconstructed_stable.mp4 --fps 60
+
+👩‍💻 Author
+
+Upasana Bhaumik
+B.Tech CSE | Registration No: 23BCB0074
+Vellore Institute of Technology (VIT)
